@@ -5,7 +5,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { CqrsModule } from '@nestjs/cqrs';
 import { ScheduleModule } from '@nestjs/schedule';
 import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
-import { Exchange } from '@events/events';
+import { EventsModule, Exchange } from '@events/events';
 
 @Module({
   imports: [
@@ -87,6 +87,7 @@ import { Exchange } from '@events/events';
     }),
     ScheduleModule.forRoot(),
     CqrsModule.forRoot(),
+    EventsModule,
   ],
   controllers: [],
   providers: [],

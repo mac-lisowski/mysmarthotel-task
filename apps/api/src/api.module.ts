@@ -1,10 +1,10 @@
-import { Logger, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TasksModule } from './modules/tasks/tasks.module';
 import apiConfig from './api.config';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
-import { ScheduleModule } from '@nestjs/schedule';
 import { CqrsModule } from '@nestjs/cqrs';
+import { EventsModule } from '@events/events';
 
 @Module({
   imports: [
@@ -22,6 +22,7 @@ import { CqrsModule } from '@nestjs/cqrs';
       inject: [ConfigService],
     }),
     CqrsModule.forRoot(),
+    EventsModule,
     TasksModule,
   ],
   controllers: [],
