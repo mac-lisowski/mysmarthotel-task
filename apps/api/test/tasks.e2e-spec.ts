@@ -134,4 +134,10 @@ describe('TaskController (e2e)', () => {
     // - Missing fields (400)
     // - Chunk number out of bounds (400)
     // - Invalid uploadId (400)
+
+
+    // TODO: Add tests for the getTaskStatus endpoint
+    // - Invalid taskId (404)
+    // - Valid taskId, but task not found (404)
+    // - Valid taskId (200)
 }); 
