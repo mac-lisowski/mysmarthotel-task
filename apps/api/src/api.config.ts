@@ -11,6 +11,9 @@ export default () => ({
   rabbitmq: {
     url: process.env.RABBITMQ_URL,
   },
+  redis: {
+    url: process.env.REDIS_URL,
+  },
   mongodb: {
     url: process.env.DATABASE_MONGODB_URL,
     dbName: process.env.DATABASE_MONGODB_DBNAME,

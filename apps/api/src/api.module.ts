@@ -6,6 +6,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 import { CqrsModule } from '@nestjs/cqrs';
 import { EventsModule } from '@events/events';
 import { DatabaseModule } from '@database';
+import { RedisModule } from '@nestjs-modules/ioredis';
 
 @Module({
   imports: [
@@ -20,6 +21,14 @@ import { DatabaseModule } from '@database';
           uri: configService.getOrThrow('mongodb.url'),
         };
       },
+      inject: [ConfigService],
+    }),
+    RedisModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: async (configService: ConfigService) => ({
+        url: configService.getOrThrow('redis.url'),
+        type: 'single',
+      }),
       inject: [ConfigService],
     }),
     CqrsModule.forRoot(),
