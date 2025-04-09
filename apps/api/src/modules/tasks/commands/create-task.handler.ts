@@ -6,7 +6,7 @@ import { Task, TaskDocument } from '@database/schemas/task.schema';
 import { Event, EventDocument } from '@database/schemas/event.schema';
 import { TaskStatus } from '@database/task-status.enum';
 import { EventStatus } from '@database/event-status.enum';
-import { CreateTaskCommand } from '../create-task.command';
+import { CreateTaskCommand } from './create-task.command';
 import { Connection } from 'mongoose';
 import { InjectConnection } from '@nestjs/mongoose';
 import { v4 as uuidv4 } from 'uuid';

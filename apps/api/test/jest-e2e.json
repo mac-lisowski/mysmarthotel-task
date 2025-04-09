@@ -1,9 +1,24 @@
 {
-  "moduleFileExtensions": ["js", "json", "ts"],
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "globalSetup": "<rootDir>/globalSetup.ts",
+  "globalTeardown": "<rootDir>/globalTeardown.ts",
+  "testTimeout": 60000,
+  "moduleNameMapper": {
+    "@database": "<rootDir>/../../../libs/database/src",
+    "@database/(.*)": "<rootDir>/../../../libs/database/src/$1",
+    "@events/events": "<rootDir>/../../../libs/events/src",
+    "@events/events/(.*)": "<rootDir>/../../../libs/events/src/$1",
+    "@files": "<rootDir>/../../../libs/files/src",
+    "@files/(.*)": "<rootDir>/../../../libs/files/src/$1"
   }
 }
