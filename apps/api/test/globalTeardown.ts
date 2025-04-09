@@ -29,6 +29,7 @@ const teardown = async () => {
 
     if (!containers) {
         console.warn('No Testcontainers found in global scope to tear down.');
+        process.exit(0);
         return;
     }
 
@@ -38,6 +39,9 @@ const teardown = async () => {
         console.log('Testcontainers stopped.');
     } catch (error) {
         console.error('Error stopping Testcontainers:', error);
+    } finally {
+        console.log('Forcing process exit after teardown.');
+        process.exit(0);
     }
 };
 
