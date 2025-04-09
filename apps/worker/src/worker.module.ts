@@ -7,6 +7,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { EventsModule as SharedEventsModule, Exchange } from '@events/events';
 import { EventsModule as WorkerOutboxEventsModule } from './modules/events/events.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { EventsModule as WorkerOutboxEventsModule } from './modules/events/event
     CqrsModule.forRoot(),
     SharedEventsModule,
     WorkerOutboxEventsModule,
+    TasksModule,
   ],
   controllers: [],
   providers: [],
