@@ -2,6 +2,7 @@ import { Body, Controller, FileTypeValidator, ParseFilePipe, Post, UploadedFile,
 import { ApiBody, ApiConsumes, ApiOperation, ApiResponse, ApiTags, ApiSecurity } from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { UploadReservationsDto } from "../dto/upload-reservations.dto";
+import { ChunkReceivedResponseDto, UploadCompletedResponseDto } from "../dto/upload-response.dto";
 import { TaskService } from "../services/task.service";
 import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 
@@ -14,13 +15,35 @@ export class TaskController {
         private readonly taskService: TaskService,
     ) { }
 
-    @ApiOperation({ summary: 'Upload reservations in chunks' })
-    @ApiResponse({ status: 200, description: 'Chunk uploaded successfully' })
-    @ApiResponse({ status: 400, description: 'Invalid file type or size' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - API key required' })
+    @ApiOperation({
+        summary: 'Upload reservations in chunks',
+        description: 'Upload a chunk of an XLSX file containing reservations. For intermediate chunks, returns a status. For the final chunk, returns the task ID.'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Chunk uploaded successfully',
+        type: ChunkReceivedResponseDto
+    })
+    @ApiResponse({
+        status: 201,
+        description: 'Final chunk uploaded and task created',
+        type: UploadCompletedResponseDto
+    })
+    @ApiResponse({
+        status: 400,
+        description: 'Invalid request (file type, chunk number, or upload session)'
+    })
+    @ApiResponse({
+        status: 401,
+        description: 'Unauthorized - API key required'
+    })
+    @ApiResponse({
+        status: 500,
+        description: 'Internal server error during upload or task creation'
+    })
     @ApiConsumes('multipart/form-data')
     @ApiBody({
-        description: 'Reservations file chunk',
+        description: 'Reservations file chunk with metadata',
         type: UploadReservationsDto,
     })
     @Post('upload')
@@ -34,7 +57,7 @@ export class TaskController {
             }),
         ) file: Express.Multer.File,
         @Body() dto: Omit<UploadReservationsDto, 'file'>,
-    ) {
+    ): Promise<ChunkReceivedResponseDto | UploadCompletedResponseDto> {
         return this.taskService.handleFileChunk(
             file,
             dto.chunkNumber,

@@ -12,6 +12,9 @@ export class Task {
     @Prop({ required: true })
     filePath: string;
 
+    @Prop({ required: true })
+    originalFileName: string;
+
     @Prop({ required: true, enum: TaskStatus, default: TaskStatus.PENDING, type: String })
     status: TaskStatus;
 
