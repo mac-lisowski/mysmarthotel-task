@@ -18,6 +18,12 @@
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
     "paths": {
+      "@database/database": [
+        "libs/database/src"
+      ],
+      "@database/database/*": [
+        "libs/database/src/*"
+      ],
       "@events/events": [
         "libs/events/src"
       ],
