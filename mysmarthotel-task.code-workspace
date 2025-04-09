@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../mivia-monorepo"
+		},
+		{
+			"path": "../slimslice.app/slimslice.app-api"
+		},
+		{
+			"path": "../slimslice.app/slimslice.app-worker-download-off"
+		}
+	],
+	"settings": {}
+}

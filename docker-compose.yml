@@ -1,0 +1,44 @@
+services:
+  rmq:
+    image: rabbitmq:3.13-management
+    ports:
+      - 5672:5672
+      - 15672:15672
+    volumes:
+      - ./.volumes/rabbitmq/data/:/var/lib/rabbitmq/
+      - ./.volumes/rabbitmq/log/:/var/log/rabbitmq/
+      - ./docker/rabbitmq/rabbitmq.config:/etc/rabbitmq/rabbitmq.config:ro
+      - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+    networks:
+      - app_network
+  mongodb:
+    image: mongo:8.0
+    hostname: mongodb
+    command: [ "--replSet", "rs0", "--bind_ip_all" ]
+    ports:
+      - 27017:27017
+    volumes:
+      - ./.volumes/mongodb:/data/db
+    networks:
+      - app_network
+    healthcheck:
+      test: [ "CMD", "mongosh", "--eval", "db.adminCommand('ping')" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+  mongo-init:
+    image: mongo:8.0
+    restart: "no"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    volumes:
+      - ./docker/mongodb/init-mongodb.sh:/init-mongodb.sh
+    entrypoint: [ "/bin/bash", "/init-mongodb.sh" ]
+    networks:
+      - app_network
+networks:
+  app_network:
+
+
