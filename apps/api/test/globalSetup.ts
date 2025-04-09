@@ -69,7 +69,12 @@ const setup = async () => {
         await new Promise(resolve => setTimeout(resolve, 3000));
 
         // Get connection strings and other details - Containers are definitely started here
-        const mongoUri = mongoContainer.getConnectionString();
+        const baseMongoUri = mongoContainer.getConnectionString();
+        // Append directConnection=true to potentially bypass internal hostname resolution issues
+        const separator = baseMongoUri.includes('?') ? '&' : '?';
+        const mongoUri = `${baseMongoUri}${separator}directConnection=true`;
+        console.log(`Using MongoDB connection string: ${mongoUri}`); // Log the final URI
+
         const rabbitHost = rabbitContainer.getHost();
         const rabbitPort = rabbitContainer.getMappedPort(5672);
         const rabbitUri = `amqp://guest:guest@${rabbitHost}:${rabbitPort}`;
@@ -88,7 +93,7 @@ const setup = async () => {
         process.env.API_ROOT_API_KEY = apiKey;
         process.env.RABBITMQ_URL = rabbitUri;
         process.env.REDIS_URL = redisUri;
-        process.env.DATABASE_MONGODB_URL = mongoUri; // Should include ?replicaSet=rs0
+        process.env.DATABASE_MONGODB_URL = mongoUri; // Use the modified URI
         process.env.DATABASE_MONGODB_DBNAME = dbName;
         process.env.AWS_ACCESS_KEY_ID = minioAccessKey;
         process.env.AWS_SECRET_ACCESS_KEY = minioSecretKey;
