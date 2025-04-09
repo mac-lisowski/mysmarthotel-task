@@ -88,6 +88,37 @@ This command will:
     - RabbitMQ Management UI: `15672` (Access via http://localhost:15672, default user/pass: guest/guest)
 - Mount volumes in `.volumes/` to persist data between runs.
 
+**RabbitMQ Configuration:**
+
+The project uses RabbitMQ for asynchronous message processing with the following exchange and queue setup:
+
+- **Exchanges:**
+  - `x.events` (fanout): Main event exchange for broadcasting events
+  - `x.worker` (topic): Worker-specific exchange for task routing
+  - `x.dlq` (topic): Dead Letter Queue exchange for handling failed messages
+
+- **Exchange Bindings:**
+  - `x.events` → `x.worker` (pattern: `#.event`): Routes all events to worker exchange
+  - `x.dlq` → `x.worker` (pattern: `dlq-publish`): Routes delayed/retried messages back to worker
+
+- **Queues:**
+  - `q.worker.task`:
+    - Bound to: `x.worker`
+    - Routing keys: `task.event`, `dlq-publish`
+    - DLQ config: Messages are sent to `x.dlq` with routing key `dlq-delay`
+  - `q.dlq.worker-task` (Delay Queue):
+    - Bound to: `x.dlq`
+    - Routing key: `dlq-delay`
+    - TTL: 2 minutes
+    - After TTL: Messages are routed back to `x.dlq` with key `dlq-publish`
+
+This setup implements a delayed retry mechanism:
+1. Failed messages from `q.worker.task` go to the DLQ
+2. Messages wait in the delay queue for 2 minutes
+3. After the delay, messages are automatically retried
+
+Note: Implement retry count checking in your consumers to prevent infinite retry loops.
+
 **LocalStack (AWS Emulator):**
 
 The `docker-compose.yml` includes a service definition for [LocalStack](https://localstack.cloud/), which emulates various AWS services locally (currently configured for S3). This is used for development and testing without needing actual AWS resources.
