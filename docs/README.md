@@ -88,6 +88,24 @@ This command will:
     - RabbitMQ Management UI: `15672` (Access via http://localhost:15672, default user/pass: guest/guest)
 - Mount volumes in `.volumes/` to persist data between runs.
 
+**LocalStack (AWS Emulator):**
+
+The `docker-compose.yml` includes a service definition for [LocalStack](https://localstack.cloud/), which emulates various AWS services locally (currently configured for S3). This is used for development and testing without needing actual AWS resources.
+
+- **Starting:** LocalStack starts automatically along with MongoDB and RabbitMQ when you run:
+  ```bash
+  docker compose up -d
+  ```
+- **Configuration:**
+    - By default, only the S3 service is enabled via the `SERVICES=s3` environment variable in `docker-compose.yml`. You can modify this variable to enable other services (e.g., `SERVICES=s3,sqs`).
+    - The main edge port `4566` is exposed. Applications within the Docker network should use `http://localstack:4566` as the endpoint URL.
+- **Environment Variables:** The `.env.example` file includes the necessary environment variables for connecting to LocalStack from your applications:
+    - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`: Use the default `test`/`test`.
+    - `AWS_REGION`: A default region like `us-east-1`.
+    - `AWS_ENDPOINT_URL`: Set to `http://localstack:4566`.
+    - `S3_BUCKET_NAME`: Define the name of the S3 bucket your application will use.
+  Remember to copy `.env.example` to `.env` for local development.
+
 **Stop Services:**
 
 ```bash
@@ -186,7 +204,7 @@ npm run test:e2e:worker
 
 Configuration is primarily managed through environment variables.
 
-- A `.env.example` file exists in the root directory, showing the required variables.
+- A `.env.example` file exists in the root directory, showing the required variables. These typically include settings for the API and Worker applications (host, port, logging), connection URLs for external services (MongoDB, RabbitMQ), and configurations for AWS services (using LocalStack for local development).
 - For local development, copy `.env.example` to `.env` and fill in the necessary values (or use the defaults if suitable).
 - The applications (using `@nestjs/config`) load variables from the `.env` file.
 - **Never commit your `.env` file to version control.** Ensure it's listed in `.gitignore`.

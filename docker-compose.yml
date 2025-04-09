@@ -38,6 +38,19 @@ services:
     entrypoint: [ "/bin/bash", "/init-mongodb.sh" ]
     networks:
       - app_network
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      DEBUG: ${DEBUG:-0}
+      SERVICES: s3
+      DATA_DIR: /tmp/localstack/data
+    volumes:
+      - ./.volumes/localstack:/var/lib/localstack
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - app_network
 networks:
   app_network:
 

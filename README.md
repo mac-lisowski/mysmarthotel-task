@@ -28,6 +28,7 @@ docker compose up -d
 ```
 - MongoDB will be accessible on port `27017`.
 - RabbitMQ management UI will be accessible at http://localhost:15672 (default user/pass: guest/guest).
+- A LocalStack service (for emulating AWS services like S3) is also started. See `docs/README.md` for details.
 
 **3. Run Applications (Development Mode):**
 Open two separate terminals:
