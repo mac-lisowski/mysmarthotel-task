@@ -17,6 +17,13 @@
     "noImplicitAny": false,
     "strictBindCallApply": false,
     "noFallthroughCasesInSwitch": false,
-    "paths": {}
+    "paths": {
+      "@events/events": [
+        "libs/events/src"
+      ],
+      "@events/events/*": [
+        "libs/events/src/*"
+      ]
+    }
   }
 }

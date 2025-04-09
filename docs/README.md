@@ -157,6 +157,20 @@ npm run start:prod:worker
 
 Note: For actual production deployments, consider containerizing the applications using Dockerfiles (like the example `Dockerfile-api`) and managing them with an orchestrator or platform.
 
+### API Authentication
+
+The API uses a simple API key authentication scheme for this project:
+
+- **Root API Key:** A single root-level API key that grants full access to all endpoints.
+  - Set via environment variables:
+    - `API_ROOT_API_KEY`: The API key identifier
+    - `API_ROOT_API_KEY_SECRET`: The secret value for the API key
+  - Must be included in requests using the `X-API-Key` header:
+    ```bash
+    curl -H "X-API-Key: your_api_key_here" http://localhost:3000/api/endpoint
+    ```
+  - For simplicity in this project, we're using a single root key. In a production environment, you would typically implement more granular API key management with different access levels and organization-specific keys.
+
 ## Testing
 
 The project uses Jest for testing, integrated with Testcontainers for E2E tests requiring external services.

@@ -25,13 +25,16 @@
     "test:e2e:worker": "jest --config ./apps/worker/test/jest-e2e.json"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.782.0",
     "@golevelup/nestjs-rabbitmq": "^5.7.0",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/cqrs": "^11.0.3",
     "@nestjs/microservices": "^11.0.14",
+    "@nestjs/mongoose": "^11.0.3",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^5.0.1",
     "@nestjs/swagger": "^11.1.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -49,6 +52,7 @@
     "@swc/core": "^1.10.7",
     "@testcontainers/mongodb": "^10.24.1",
     "@testcontainers/rabbitmq": "^10.24.1",
+    "@types/compression": "^1.7.5",
     "@types/express": "^5.0.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
@@ -86,7 +90,11 @@
     "coverageDirectory": "./coverage",
     "testEnvironment": "node",
     "roots": [
-      "<rootDir>/apps/"
-    ]
+      "<rootDir>/apps/",
+      "<rootDir>/libs/"
+    ],
+    "moduleNameMapper": {
+      "^@events/events(|/.*)$": "<rootDir>/libs/events/src/$1"
+    }
   }
 }
