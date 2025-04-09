@@ -73,7 +73,6 @@ const setup = async () => {
         // Append directConnection=true to potentially bypass internal hostname resolution issues
         const separator = baseMongoUri.includes('?') ? '&' : '?';
         const mongoUri = `${baseMongoUri}${separator}directConnection=true`;
-        console.log(`Using MongoDB connection string: ${mongoUri}`); // Log the final URI
 
         const rabbitHost = rabbitContainer.getHost();
         const rabbitPort = rabbitContainer.getMappedPort(5672);

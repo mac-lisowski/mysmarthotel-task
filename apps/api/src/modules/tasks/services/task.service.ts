@@ -30,22 +30,28 @@ export class TaskService {
         uploadId: string,
         originalFileName: string,
     ): Promise<{ status: string } | { taskId: string }> {
+        const numChunkNumber = Number(chunkNumber);
+        const numTotalChunks = Number(totalChunks);
+
         try {
-            if (chunkNumber >= totalChunks) {
+            if (isNaN(numChunkNumber) || isNaN(numTotalChunks)) {
+                throw new BadRequestException('Invalid chunkNumber or totalChunks format');
+            }
+            if (numChunkNumber >= numTotalChunks) {
                 throw new BadRequestException('Chunk number exceeds total chunks');
             }
 
             const sessionKey = `upload:${uploadId}`;
             let session: UploadSession;
 
-            if (chunkNumber === 0) {
+            if (numChunkNumber === 0) {
                 const bucketFilePath = `uploads/${uuidv4()}/${originalFileName}`;
                 const s3UploadId = await this.fileService.createMultipartUpload(bucketFilePath, chunk.mimetype);
 
                 session = {
                     s3UploadId,
                     bucketFilePath,
-                    totalChunks,
+                    totalChunks: numTotalChunks,
                     originalFileName,
                     mimeType: chunk.mimetype,
                     uploadedParts: [],
@@ -62,9 +68,12 @@ export class TaskService {
                     throw new BadRequestException('Upload session not found or expired');
                 }
                 session = JSON.parse(sessionData);
+                if (session.totalChunks !== numTotalChunks) {
+                    this.logger.warn(`[handleFileChunk] Mismatched totalChunks! Request: ${numTotalChunks}, Session: ${session.totalChunks}`);
+                }
             }
 
-            const partNumber = chunkNumber + 1;
+            const partNumber = numChunkNumber + 1;
             const etag = await this.fileService.uploadPart(
                 session.bucketFilePath,
                 session.s3UploadId,
@@ -79,7 +88,7 @@ export class TaskService {
 
             await this.redis.set(sessionKey, JSON.stringify(session));
 
-            if (chunkNumber === totalChunks - 1) {
+            if (numChunkNumber === numTotalChunks - 1) {
                 return this.completeUpload(session);
             }
 

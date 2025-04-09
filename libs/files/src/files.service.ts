@@ -28,6 +28,7 @@ export class FileService {
                 accessKeyId: this.configService.getOrThrow('s3.accessKeyId'),
                 secretAccessKey: this.configService.getOrThrow('s3.secretAccessKey'),
             },
+            forcePathStyle: true, // Often needed for MinIO/LocalStack
         });
         this.bucketName = this.configService.getOrThrow('s3.bucketName');
     }

@@ -12,15 +12,15 @@ export class ApiKeyGuard implements CanActivate {
         context: ExecutionContext,
     ): boolean | Promise<boolean> | Observable<boolean> {
         const request = context.switchToHttp().getRequest<Request>();
-        const apiKey = request.headers['X-Api-Key'] as string | undefined;
-        const validApiKey = this.configService.get<string>('auth.rootApiKey');
+        const receivedApiKey = request.headers['x-api-key'] as string | undefined;
+        const expectedApiKey = this.configService.get<string>('auth.rootApiKey');
 
-        if (!validApiKey) {
+        if (!expectedApiKey) {
             this.logger.error('API_ROOT_API_KEY (auth.rootApiKey) is not configured.');
-            throw new UnauthorizedException('Invalid or missing API key');
+            throw new UnauthorizedException('API Key configuration error');
         }
 
-        if (!apiKey || apiKey !== validApiKey) {
+        if (!receivedApiKey || receivedApiKey !== expectedApiKey) {
             throw new UnauthorizedException('Invalid or missing API key');
         }
 
