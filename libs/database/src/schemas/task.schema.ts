@@ -18,8 +18,8 @@ export class Task {
     @Prop({ required: true, enum: TaskStatus, default: TaskStatus.PENDING, type: String })
     status: TaskStatus;
 
-    @Prop({ required: false, type: Object })
-    error: Record<string, any>;
+    @Prop({ required: false, type: [Object], default: [] })
+    errors: Record<string, any>[];
 
     @Prop({ required: false, type: Date })
     startedAt: Date;

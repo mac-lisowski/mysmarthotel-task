@@ -1,18 +1,24 @@
-import { Body, Controller, FileTypeValidator, ParseFilePipe, Post, UploadedFile, UseInterceptors, UseGuards } from "@nestjs/common";
-import { ApiBody, ApiConsumes, ApiOperation, ApiResponse, ApiTags, ApiSecurity } from "@nestjs/swagger";
+import { Body, Controller, FileTypeValidator, Get, Logger, Param, ParseFilePipe, Post, UploadedFile, UseInterceptors, UseGuards, NotFoundException } from "@nestjs/common";
+import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags, ApiSecurity } from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
+import { QueryBus } from "@nestjs/cqrs";
 import { UploadReservationsDto } from "../dto/upload-reservations.dto";
 import { ChunkReceivedResponseDto, UploadCompletedResponseDto } from "../dto/upload-response.dto";
 import { TaskService } from "../services/task.service";
 import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
+import { GetTaskStatusQuery } from "../queries/get-task-status.query";
+import { TaskStatusResponseDto } from "../dto/task-status-response.dto";
 
 @ApiTags('Task')
 @ApiSecurity('api_key')
 @UseGuards(ApiKeyGuard)
 @Controller('task')
 export class TaskController {
+    private readonly logger = new Logger(TaskController.name);
+
     constructor(
         private readonly taskService: TaskService,
+        private readonly queryBus: QueryBus,
     ) { }
 
     @ApiOperation({
@@ -65,5 +71,25 @@ export class TaskController {
             dto.uploadId,
             dto.originalFileName,
         );
+    }
+
+    @ApiOperation({ summary: 'Get task status', description: 'Retrieves the current status and details of a specific task.' })
+    @ApiParam({ name: 'taskId', description: 'The unique ID of the task', type: String, example: 'upload_abc123' })
+    @ApiResponse({ status: 200, description: 'Task status retrieved successfully', type: TaskStatusResponseDto })
+    @ApiResponse({ status: 401, description: 'Unauthorized - API key required' })
+    @ApiResponse({ status: 404, description: 'Task not found' })
+    @ApiResponse({ status: 500, description: 'Internal server error' })
+    @Get('status/:taskId')
+    async getTaskStatus(
+        @Param('taskId') taskId: string
+    ): Promise<TaskStatusResponseDto> {
+        try {
+            return await this.queryBus.execute(new GetTaskStatusQuery(taskId));
+        } catch (error) {
+            if (error instanceof NotFoundException) {
+                throw new NotFoundException(error.message);
+            }
+            throw error;
+        }
     }
 }

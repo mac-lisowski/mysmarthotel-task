@@ -5,6 +5,7 @@ import { TaskService } from "./services/task.service";
 import { ApiKeyGuard } from "../../common/guards/api-key.guard";
 import { FilesModule } from "@files";
 import { CreateTaskHandler } from "./commands/create-task.handler";
+import { GetTaskStatusHandler } from "./queries/get-task-status.handler";
 
 @Module({
     imports: [
@@ -16,6 +17,7 @@ import { CreateTaskHandler } from "./commands/create-task.handler";
         TaskService,
         ApiKeyGuard,
         CreateTaskHandler,
+        GetTaskStatusHandler
     ],
 })
 export class TasksModule { }
