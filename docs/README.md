@@ -11,6 +11,8 @@ This document provides a more detailed overview of the SmartHotel Task project s
   - [Docker Services](#docker-services)
   - [Development Mode](#development-mode)
   - [Production Mode](#production-mode)
+- [Event Processing](#event-processing)
+  - [Outbox Pattern](./outbox-pattern.md)
 - [Testing](#testing)
   - [Unit Tests](#unit-tests)
   - [E2E Tests](#e2e-tests)
@@ -31,7 +33,6 @@ This project is a monorepo managed with npm workspaces (implicitly).
 ├── docker/             # Docker configuration files (MongoDB init, RabbitMQ config)
 ├── docs/               # Project documentation (this file)
 ├── node_modules/       # Dependencies
-├── .cursor/            # Cursor AI rules
 ├── .vscode/            # VSCode settings
 ├── .env.example        # Example environment variables
 ├── .gitignore
@@ -201,6 +202,12 @@ The API uses a simple API key authentication scheme for this project:
     curl -H "X-API-Key: your_api_key_here" http://localhost:3000/api/endpoint
     ```
   - For simplicity in this project, we're using a single root key. In a production environment, you would typically implement more granular API key management with different access levels and organization-specific keys.
+
+## Event Processing
+
+### Outbox Pattern
+
+The project implements the Outbox Pattern for asynchronous event processing. This pattern ensures that events are processed in a reliable and consistent manner, even in the event of system failures.
 
 ## Testing
 
