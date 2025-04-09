@@ -10,39 +10,64 @@ import {
 import {
     StartedMinioContainer
 } from '@testcontainers/minio';
+import { ChildProcess } from 'child_process';
 
-interface GlobalWithTestcontainers {
-    __TESTCONTAINERS__: {
-        mongo: StartedMongoDBContainer;
-        rabbit: StartedRabbitMQContainer;
-        redis: StartedRedisContainer;
-        minio: StartedMinioContainer;
-    };
+declare global {
+    namespace NodeJS {
+        interface Global {
+            __TESTCONTAINERS__: {
+                mongo?: StartedMongoDBContainer | null;
+                rabbit?: StartedRabbitMQContainer | null;
+                redis?: StartedRedisContainer | null;
+                minio?: StartedMinioContainer | null;
+            };
+            __WORKER_PROCESS__?: ChildProcess | null;
+        }
+    }
 }
 
-declare const global: GlobalWithTestcontainers;
-
 const teardown = async () => {
-    console.log('\nTearing down Testcontainers...');
+    console.log('\nTearing down Testcontainers and Worker App...');
 
     const containers = global.__TESTCONTAINERS__;
+    const workerProcess = global.__WORKER_PROCESS__;
+    const stopPromises: Promise<any>[] = [];
 
-    if (!containers) {
-        console.warn('No Testcontainers found in global scope to tear down.');
-        process.exit(0);
-        return;
+    if (containers) {
+        console.log('Stopping Testcontainers...');
+        stopPromises.push(...Object.values(containers)
+            .filter(container => !!container)
+            .map(container => (container as StartedMongoDBContainer | StartedRabbitMQContainer | StartedRedisContainer | StartedMinioContainer).stop())
+        );
+    } else {
+        console.warn('__TESTCONTAINERS__ not found in global scope.');
     }
 
-    try {
-        const stopPromises = Object.values(containers).map(container => container?.stop());
-        await Promise.allSettled(stopPromises);
-        console.log('Testcontainers stopped.');
-    } catch (error) {
-        console.error('Error stopping Testcontainers:', error);
-    } finally {
-        console.log('Forcing process exit after teardown.');
-        process.exit(0);
+    if (workerProcess?.pid) {
+        console.log(`Stopping worker process (PID: ${workerProcess.pid})...`);
+        try {
+            process.kill(-workerProcess.pid, 'SIGTERM');
+            console.log('Sent SIGTERM to worker process group.');
+        } catch (killError: any) {
+            if (killError.code !== 'ESRCH') {
+                console.error(`Error stopping worker process group (PID: ${workerProcess.pid}):`, killError);
+            }
+        }
+    } else {
+        console.warn('__WORKER_PROCESS__ not found or has no PID.');
     }
+
+    if (stopPromises.length > 0) {
+        try {
+            await Promise.allSettled(stopPromises);
+            console.log('Testcontainers stop operations settled.');
+        } catch (error) {
+            console.error('Error during container stop settlement:', error);
+        }
+    }
+
+    console.log('Teardown complete. Forcing process exit.');
+    process.exit(0);
 };
 
 export default teardown; 
