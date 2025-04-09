@@ -10,7 +10,7 @@ export class Task {
     taskId: string;
 
     @Prop({ required: true })
-    fileId: string;
+    filePath: string;
 
     @Prop({ required: true, enum: TaskStatus, default: TaskStatus.PENDING, type: String })
     status: TaskStatus;

@@ -37,6 +37,15 @@
         "tsConfigPath": "libs/events/tsconfig.lib.json"
       }
     },
+    "files": {
+      "type": "library",
+      "root": "libs/files",
+      "entryFile": "index",
+      "sourceRoot": "libs/files/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/files/tsconfig.lib.json"
+      }
+    },
     "worker": {
       "type": "application",
       "root": "apps/worker",

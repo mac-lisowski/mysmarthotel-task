@@ -104,7 +104,8 @@
     ],
     "moduleNameMapper": {
       "^@database/database(|/.*)$": "<rootDir>/libs/database/src/$1",
-      "^@events/events(|/.*)$": "<rootDir>/libs/events/src/$1"
+      "^@events/events(|/.*)$": "<rootDir>/libs/events/src/$1",
+      "^@files/files(|/.*)$": "<rootDir>/libs/files/src/$1"
     }
   }
 }

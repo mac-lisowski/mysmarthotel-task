@@ -29,6 +29,12 @@
       ],
       "@events/events/*": [
         "libs/events/src/*"
+      ],
+      "@files": [
+        "libs/files/src"
+      ],
+      "@files/*": [
+        "libs/files/src/*"
       ]
     }
   }
