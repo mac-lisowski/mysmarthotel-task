@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { TaskStatus } from 'libs/database/src/task-status.enum';
+import { TaskStatus } from '@database/task-status.enum';
 
 export class TaskStatusResponseDto {
     @ApiProperty({ description: "Unique identifier for the task", example: "upload_abc123" })

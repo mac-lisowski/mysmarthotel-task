@@ -3,6 +3,7 @@ import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags, Api
 import { FileInterceptor } from "@nestjs/platform-express";
 import { QueryBus } from "@nestjs/cqrs";
 import { UploadReservationsDto } from "../dto/upload-reservations.dto";
+import { UploadReservationsBodyDto } from "../dto/upload-reservations-body.dto";
 import { ChunkReceivedResponseDto, UploadCompletedResponseDto } from "../dto/upload-response.dto";
 import { TaskService } from "../services/task.service";
 import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
@@ -60,16 +61,17 @@ export class TaskController {
                 validators: [
                     new FileTypeValidator({ fileType: /(application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet)$/ }),
                 ],
+                fileIsRequired: true,
             }),
         ) file: Express.Multer.File,
-        @Body() dto: Omit<UploadReservationsDto, 'file'>,
+        @Body() body: UploadReservationsBodyDto,
     ): Promise<ChunkReceivedResponseDto | UploadCompletedResponseDto> {
         return this.taskService.handleFileChunk(
             file,
-            dto.chunkNumber,
-            dto.totalChunks,
-            dto.uploadId,
-            dto.originalFileName,
+            body.chunkNumber,
+            body.totalChunks,
+            body.uploadId,
+            body.originalFileName,
         );
     }
 
