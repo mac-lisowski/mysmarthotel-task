@@ -7,7 +7,6 @@ export default () => ({
   },
   auth: {
     rootApiKey: process.env.API_ROOT_API_KEY,
-    rootApiKeySecret: process.env.API_ROOT_API_KEY_SECRET,
   },
   rabbitmq: {
     url: process.env.RABBITMQ_URL,

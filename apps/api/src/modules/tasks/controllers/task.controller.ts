@@ -1,10 +1,13 @@
-import { Body, Controller, FileTypeValidator, ParseFilePipe, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
-import { ApiBody, ApiConsumes, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, FileTypeValidator, ParseFilePipe, Post, UploadedFile, UseInterceptors, UseGuards } from "@nestjs/common";
+import { ApiBody, ApiConsumes, ApiOperation, ApiResponse, ApiTags, ApiSecurity } from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { UploadReservationsDto } from "../dto/upload-reservations.dto";
 import { TaskService } from "../services/task.service";
+import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 
 @ApiTags('Task')
+@ApiSecurity('api_key')
+@UseGuards(ApiKeyGuard)
 @Controller('task')
 export class TaskController {
     constructor(
@@ -14,7 +17,7 @@ export class TaskController {
     @ApiOperation({ summary: 'Upload reservations in chunks' })
     @ApiResponse({ status: 200, description: 'Chunk uploaded successfully' })
     @ApiResponse({ status: 400, description: 'Invalid file type or size' })
-    @ApiResponse({ status: 401, description: 'Unauthorized - API key authentication required' })
+    @ApiResponse({ status: 401, description: 'Unauthorized - API key required' })
     @ApiConsumes('multipart/form-data')
     @ApiBody({
         description: 'Reservations file chunk',
