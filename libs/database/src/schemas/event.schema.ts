@@ -12,7 +12,7 @@ export class Event {
     @Prop({ required: true, type: Object })
     event: Record<string, any>;
 
-    @Prop({ required: true, enum: EventStatus, default: EventStatus.NEW })
+    @Prop({ required: true, enum: EventStatus, default: EventStatus.NEW, type: String })
     status: EventStatus;
 
     @Prop({ required: false, type: Object })

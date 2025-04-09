@@ -12,7 +12,7 @@ export class Task {
     @Prop({ required: true })
     fileId: string;
 
-    @Prop({ required: true, enum: TaskStatus, default: TaskStatus.PENDING })
+    @Prop({ required: true, enum: TaskStatus, default: TaskStatus.PENDING, type: String })
     status: TaskStatus;
 
     @Prop({ required: false, type: Object })

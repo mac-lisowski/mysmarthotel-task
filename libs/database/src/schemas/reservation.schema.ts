@@ -12,7 +12,7 @@ export class Reservation {
     @Prop({ required: false })
     guestName: string;
 
-    @Prop({ required: true, enum: ReservationStatus, default: ReservationStatus.PENDING })
+    @Prop({ required: true, enum: ReservationStatus, default: ReservationStatus.PENDING, type: String })
     status: ReservationStatus;
 
     @Prop({

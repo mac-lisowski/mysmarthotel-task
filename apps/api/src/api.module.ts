@@ -5,6 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { CqrsModule } from '@nestjs/cqrs';
 import { EventsModule } from '@events/events';
+import { DatabaseModule } from '@database';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { EventsModule } from '@events/events';
       inject: [ConfigService],
     }),
     CqrsModule.forRoot(),
+    DatabaseModule,
     EventsModule,
     TasksModule,
   ],
