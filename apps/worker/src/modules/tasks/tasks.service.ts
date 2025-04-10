@@ -52,6 +52,17 @@ export class TasksService {
             return;
         }
 
+        try {
+            const existingEvent = await this.eventModel.findOne({ _id: eventId, status: EventStatus.PROCESSED });
+            if (existingEvent) {
+                this.logger.debug(`Event ${eventId} has already been processed. Acknowledging.`);
+                return;
+            }
+        } catch (checkError) {
+            this.logger.error(`Error checking event ${eventId} status: ${checkError.message}`, checkError.stack);
+            return new Nack(false);
+        }
+
         let session: ClientSession | undefined;
 
         try {
@@ -124,6 +135,22 @@ export class TasksService {
                             }
 
                             processedIds.add(row.reservation_id);
+
+                            const existingReservation = await this.reservationModel.findOne(
+                                { reservationId: row.reservation_id },
+                                { status: 1 },
+                                { session }
+                            );
+
+                            if (existingReservation &&
+                                (existingReservation.status === ReservationStatus.COMPLETED ||
+                                    existingReservation.status === ReservationStatus.CANCELED)) {
+                                errors.push({
+                                    row: rowNumber,
+                                    error: `Skipped: Reservation ${row.reservation_id} is already ${existingReservation.status}.`
+                                });
+                                continue;
+                            }
 
                             await this.reservationModel.updateOne(
                                 { reservationId: row.reservation_id },

@@ -185,8 +185,8 @@
   - [ ] Add logic to check existing reservation status in the DB before applying updates (e.g., prevent updates if status is `COMPLETED` or `CANCELED`).
   - [ ] Implement other specific status transition rules if needed.
 
-- [ ] **Idempotency Check (Event Level):**
-  - [ ] Consider adding a check at the start of `handleTaskCreated` (before the transaction) to see if the `eventId` has already been marked `PROCESSED`. If so, ACK immediately.
+- [x] **Idempotency Check (Event Level):**
+  - [x] Consider adding a check at the start of `handleTaskCreated` (before the transaction) to see if the `eventId` has already been marked `PROCESSED`. If so, ACK immediately.
 
 - [ ] **Refined Retry Logic:**
   - [ ] Re-evaluate which specific database or S3 errors (beyond write conflicts) should trigger a retry via `Nack(false)` vs. being treated as non-retryable failures.
