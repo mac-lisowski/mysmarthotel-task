@@ -428,8 +428,7 @@ describe('TaskController (e2e)', () => {
             const event = await eventModel.findOne({ 'event.payload.taskId': receivedTaskId }).lean();
             expect(event?.status).toBe(EventStatus.PROCESSED);
             expect(event?.processedAt).toBeDefined();
-            expect(event?.error).toBeDefined();
-            expect(event?.error.message).toContain('Processing completed with');
+            expect(event?.error).toBeUndefined();
         });
     });
 }); 

@@ -3,7 +3,7 @@ import { Nack, RabbitSubscribe } from '@golevelup/nestjs-rabbitmq';
 import { Exchange, TaskCreatedEvent } from '@events/events';
 import { InjectModel, InjectConnection } from '@nestjs/mongoose';
 import { Model, Connection, ClientSession } from 'mongoose';
-import { Task, TaskDocument, Event, EventDocument, TaskStatus, EventStatus, ReservationStatus } from '@database';
+import { Task, TaskDocument, Event, EventDocument, TaskStatus, EventStatus, ReservationStatus, Reservation, ReservationDocument } from '@database';
 import { FileService } from '@files';
 import * as XLSX from 'xlsx';
 import * as os from 'os';
@@ -25,6 +25,7 @@ export class TasksService {
     constructor(
         @InjectModel(Task.name) private readonly taskModel: Model<TaskDocument>,
         @InjectModel(Event.name) private readonly eventModel: Model<EventDocument>,
+        @InjectModel(Reservation.name) private readonly reservationModel: Model<ReservationDocument>,
         @InjectConnection() private readonly connection: Connection,
         private readonly fileService: FileService,
     ) {
@@ -109,17 +110,44 @@ export class TasksService {
                             if (!row.check_out_date) { errors.push({ row: rowNumber, error: 'Missing required field: check_out_date' }); continue; }
                             if (!row.status) { errors.push({ row: rowNumber, error: 'Missing required field: status' }); continue; }
                             if (processedIds.has(row.reservation_id)) { errors.push({ row: rowNumber, error: `Duplicate reservation_id: ${row.reservation_id} found in the file` }); continue; }
-                            processedIds.add(row.reservation_id);
+
                             const checkInDate = new Date(row.check_in_date);
                             const checkOutDate = new Date(row.check_out_date);
                             if (isNaN(checkInDate.getTime())) { errors.push({ row: rowNumber, error: `Invalid date format for check_in_date. Expected YYYY-MM-DD, got: ${row.check_in_date}` }); continue; }
                             if (isNaN(checkOutDate.getTime())) { errors.push({ row: rowNumber, error: `Invalid date format for check_out_date. Expected YYYY-MM-DD, got: ${row.check_out_date}` }); continue; }
                             if (checkOutDate <= checkInDate) { errors.push({ row: rowNumber, error: `Invalid date range: check_out_date (${row.check_out_date}) must be after check_in_date (${row.check_in_date})` }); continue; }
-                        } catch (rowError) { errors.push({ row: rowNumber, error: `Error processing row: ${rowError.message}` }); }
+
+                            const reservationStatus = row.status as ReservationStatus;
+                            if (!Object.values(ReservationStatus).includes(reservationStatus)) {
+                                errors.push({ row: rowNumber, error: `Invalid reservation status: ${row.status}` });
+                                continue;
+                            }
+
+                            processedIds.add(row.reservation_id);
+
+                            await this.reservationModel.updateOne(
+                                { reservationId: row.reservation_id },
+                                {
+                                    $set: {
+                                        guestName: row.guest_name,
+                                        checkInDate: checkInDate,
+                                        checkOutDate: checkOutDate,
+                                        status: reservationStatus
+                                    }
+                                },
+                                { upsert: true, session }
+                            );
+
+                        } catch (rowError) {
+                            errors.push({
+                                row: rowNumber,
+                                error: `Unexpected error processing row: ${rowError.message}`
+                            });
+                        }
                     }
                 } catch (processingError) {
                     this.logger.error(`File processing failed for task ${task.taskId}: ${processingError.message}`);
-                    throw processingError;
+                    errors.push({ row: 0, error: `File processing error: ${processingError.message}` });
                 }
 
                 const finalStatus = errors.length > 0 ? TaskStatus.FAILED : TaskStatus.COMPLETED;
@@ -139,71 +167,58 @@ export class TasksService {
                     { new: true, session }
                 );
 
-                // If task update fails, something is fundamentally wrong (e.g., task deleted mid-transaction?)
                 if (!taskUpdateResult) {
                     throw new Error(`Failed to update task ${task._id} status within transaction`);
                 }
 
-                // --- Task Status Updated - Update Event Status --- 
                 const eventUpdateResult = await this.eventModel.findOneAndUpdate(
-                    { _id: eventId }, // Event ID is constant
+                    { _id: eventId },
                     {
                         $set: {
                             status: EventStatus.PROCESSED,
                             processedAt: new Date(),
-                            error: errors.length > 0 ? {
-                                message: `Processing completed with ${errors.length} errors`,
-                                details: errors
-                            } : undefined
+                            error: undefined
                         }
                     },
-                    { new: true, session } // Use new: true if needed, but primarily ensure it exists
+                    { new: true, session }
                 );
 
-                // If event update fails, it might have been processed concurrently? Abort.
                 if (!eventUpdateResult) {
-                    throw new Error('Event was modified unexpectedly during processing');
+                    this.logger.warn(`Failed to update event ${eventId} status within transaction, but task was processed.`);
                 }
 
                 this.logger.debug(`Successfully processed task ${payload.taskId} with status ${finalStatus} (${errors.length} errors)`);
-                processedSuccessfully = true; // Mark as successful for outer scope
+                processedSuccessfully = true;
 
             }, {
                 readConcern: { level: 'majority' },
                 writeConcern: { w: 'majority' }
             });
 
-            // If the transaction was successful, we acknowledge the message
             if (processedSuccessfully) {
                 return; // ACK
             }
 
-            // If we reached here, transaction likely aborted but didn't throw an error caught below?
-            // This case shouldn't happen with proper error handling, but Nack just in case.
             this.logger.warn(`Transaction for task ${payload.taskId} completed without success flag set. Nacking.`);
             return new Nack(false);
 
         } catch (error) {
             this.logger.error(`Error processing task ${payload.taskId}: ${error.message}`, error.stack);
 
-            // Retry only specific transient errors like write conflicts
             if (error.name === 'MongoServerError' && error.code === 112) {
                 this.logger.warn(`Write conflict for task ${payload.taskId}. Retrying (Nack).`);
                 return new Nack(false); // NACK (requeue)
             }
 
-            // For all other errors (processing errors, unexpected modifications, etc.),
-            // acknowledge the message and mark the task/event as failed outside transaction.
             this.logger.error(`Non-retryable error for task ${payload.taskId}. Acknowledging and marking as failed.`);
             try {
-                // Use updateOne with taskId, don't assume current status
                 await this.taskModel.updateOne(
                     { taskId: payload.taskId },
                     {
                         $set: {
                             status: TaskStatus.FAILED,
                             completedAt: new Date(),
-                            errors: [{ error: `Processing failed: ${error.message}` }],
+                            errors: [{ row: 0, error: `Transaction failed: ${error.message}` }],
                             workerId: null,
                             processingAt: null
                         }
@@ -215,14 +230,14 @@ export class TasksService {
                         $set: {
                             status: EventStatus.PROCESSED,
                             processedAt: new Date(),
-                            error: { message: error.message, stack: error.stack }
+                            error: { message: `Transaction failed: ${error.message}`, stack: error.stack }
                         }
                     }
                 );
             } catch (updateError) {
                 this.logger.error(`Failed to update task/event status after error for task ${payload.taskId}: ${updateError.message}`);
             }
-            return;
+            return; // ACK
         } finally {
             if (session) {
                 await session.endSession();
