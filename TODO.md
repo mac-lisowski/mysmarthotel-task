@@ -21,7 +21,7 @@
    - [x] Status-based processing (handled via upsert)
    - [x] Duplicate handling (handled via upsert)
    - [x] Data validation (basic validation implemented)
-4. [ ] Implement Error Recording in Database:
+4. [x] Implement Error Recording in Database:
 
 ## 1. Error Classification & Handling
 
@@ -161,3 +161,32 @@
      error: "Missing required field: {fieldName}"
    }
    ```
+
+## 5. Dependencies Required
+- xlsx package (already installed)
+- @aws-sdk/client-s3 (already installed)
+- mongoose (already installed)
+- class-validator (already installed)
+
+## Future Enhancements / Next Steps
+
+- [ ] **Optimistic Locking:**
+  - [ ] Add `__v` (versionKey) to `ReservationSchema`.
+  - [ ] Include version check (`__v: currentVersion`) in `updateOne` conditions for reservations.
+  - [ ] Increment version (`$inc: { __v: 1 }`) on successful update.
+  - [ ] Handle version conflict errors (e.g., log, potentially retry or mark row with error).
+
+- [ ] **Stale Task Recovery:**
+  - [ ] Create a scheduled job (e.g., using `@nestjs/schedule`).
+  - [ ] Job logic: Find tasks `IN_PROGRESS` for longer than a defined timeout (e.g., 10-15 minutes).
+  - [ ] Reset status of stale tasks to `PENDING` and clear `workerId`/`processingAt` to allow another worker to pick them up.
+
+- [ ] **Refined Business Rules:**
+  - [ ] Add logic to check existing reservation status in the DB before applying updates (e.g., prevent updates if status is `COMPLETED` or `CANCELED`).
+  - [ ] Implement other specific status transition rules if needed.
+
+- [ ] **Idempotency Check (Event Level):**
+  - [ ] Consider adding a check at the start of `handleTaskCreated` (before the transaction) to see if the `eventId` has already been marked `PROCESSED`. If so, ACK immediately.
+
+- [ ] **Refined Retry Logic:**
+  - [ ] Re-evaluate which specific database or S3 errors (beyond write conflicts) should trigger a retry via `Nack(false)` vs. being treated as non-retryable failures.
