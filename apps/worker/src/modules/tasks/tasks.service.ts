@@ -136,34 +136,32 @@ export class TasksService {
 
                             processedIds.add(row.reservation_id);
 
-                            const existingReservation = await this.reservationModel.findOne(
-                                { reservationId: row.reservation_id },
-                                { status: 1 },
-                                { session }
-                            );
+                            const existingReservation = await this.reservationModel.findOne({ reservationId: row.reservation_id }, null, { session });
 
-                            if (existingReservation &&
-                                (existingReservation.status === ReservationStatus.COMPLETED ||
-                                    existingReservation.status === ReservationStatus.CANCELED)) {
-                                errors.push({
-                                    row: rowNumber,
-                                    error: `Skipped: Reservation ${row.reservation_id} is already ${existingReservation.status}.`
-                                });
-                                continue;
-                            }
-
-                            await this.reservationModel.updateOne(
-                                { reservationId: row.reservation_id },
-                                {
-                                    $set: {
-                                        guestName: row.guest_name,
-                                        checkInDate: checkInDate,
-                                        checkOutDate: checkOutDate,
-                                        status: reservationStatus
+                            if (reservationStatus === ReservationStatus.COMPLETED || reservationStatus === ReservationStatus.CANCELED) {
+                                if (existingReservation) {
+                                    if (existingReservation.status !== reservationStatus) {
+                                        await this.reservationModel.updateOne(
+                                            { _id: existingReservation._id },
+                                            { $set: { status: reservationStatus } },
+                                            { session }
+                                        );
                                     }
-                                },
-                                { upsert: true, session }
-                            );
+                                }
+                            } else {
+                                await this.reservationModel.updateOne(
+                                    { reservationId: row.reservation_id },
+                                    {
+                                        $set: {
+                                            guestName: row.guest_name,
+                                            checkInDate: checkInDate,
+                                            checkOutDate: checkOutDate,
+                                            status: reservationStatus
+                                        }
+                                    },
+                                    { upsert: true, session }
+                                );
+                            }
 
                         } catch (rowError) {
                             errors.push({
@@ -223,7 +221,7 @@ export class TasksService {
             });
 
             if (processedSuccessfully) {
-                return; // ACK
+                return;
             }
 
             this.logger.warn(`Transaction for task ${payload.taskId} completed without success flag set. Nacking.`);
@@ -234,7 +232,7 @@ export class TasksService {
 
             if (error.name === 'MongoServerError' && error.code === 112) {
                 this.logger.warn(`Write conflict for task ${payload.taskId}. Retrying (Nack).`);
-                return new Nack(false); // NACK (requeue)
+                return new Nack(false);
             }
 
             this.logger.error(`Non-retryable error for task ${payload.taskId}. Acknowledging and marking as failed.`);
@@ -264,7 +262,7 @@ export class TasksService {
             } catch (updateError) {
                 this.logger.error(`Failed to update task/event status after error for task ${payload.taskId}: ${updateError.message}`);
             }
-            return; // ACK
+            return;
         } finally {
             if (session) {
                 await session.endSession();
