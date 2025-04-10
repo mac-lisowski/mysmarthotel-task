@@ -17,13 +17,11 @@ import * as dotenv from 'dotenv';
 import { spawn, execSync, ChildProcess } from 'child_process';
 import * as path from 'path';
 
-// Load .env file if it exists
 dotenv.config();
 
 const MINIO_ACCESS_KEY = 'minioadmin';
 const MINIO_SECRET_KEY = 'minioadmin';
 
-// Extend global declaration using a namespace
 declare global {
     namespace NodeJS {
         interface Global {
@@ -38,7 +36,6 @@ declare global {
     }
 }
 
-// Calculate project root relative to this file's location (apps/api/test)
 const projectRoot = path.resolve(__dirname, '..', '..', '..');
 
 const setup = async () => {
@@ -66,24 +63,19 @@ const setup = async () => {
                 .withWaitStrategy(Wait.forHttp('/minio/health/live', 9000).withStartupTimeout(10000))
                 .start()
         ]);
-        console.log('Infrastructure containers started.');
 
-        // Initiate MongoDB replica set
         console.log('Initiating MongoDB replica set...');
         const rsInitResult = await mongoContainer.exec([
             'mongosh', '--eval',
-            // Use try-catch inside mongo to handle AlreadyInitialized gracefully
             'try { rs.initiate({ _id: "rs0", members: [{ _id: 0, host: "localhost:27017" }] }) } catch (e) { if (e.codeName !== "AlreadyInitialized") throw e; printjson(e); }; rs.status()'
         ]);
-        // Check exit code. Output parsing can be complex; rely on non-zero exit code for critical failure.
         if (rsInitResult.exitCode !== 0) {
             console.error('Replica set initiation failed:', rsInitResult.output);
             throw new Error(`Failed to initiate MongoDB replica set (Exit Code: ${rsInitResult.exitCode})`);
         }
         console.log('MongoDB replica set initiated or already initialized.');
-        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for stabilization
+        await new Promise(resolve => setTimeout(resolve, 3000));
 
-        // Set environment variables
         console.log('Setting environment variables...');
         const baseMongoUri = mongoContainer.getConnectionString();
         const separator = baseMongoUri.includes('?') ? '&' : '?';
@@ -114,7 +106,6 @@ const setup = async () => {
         process.env.AWS_S3_BUCKET_NAME = bucketName;
         console.log('Environment variables set.');
 
-        // Create S3 bucket
         console.log('Creating S3 bucket...');
         const s3Client = new S3Client({
             endpoint: minioEndpoint,
@@ -128,10 +119,8 @@ const setup = async () => {
         await s3Client.send(new CreateBucketCommand({ Bucket: bucketName }));
         console.log(`Bucket '${bucketName}' created.`);
 
-        // --- Build and Start Worker App ---
         console.log('Building worker application...');
         try {
-            // Execute build command from project root
             execSync('npm run build:worker', { cwd: projectRoot, stdio: 'inherit' });
             console.log('Worker build successful.');
         } catch (buildErr) {
@@ -140,34 +129,83 @@ const setup = async () => {
         }
 
         console.log('Starting worker application in background...');
+
+        // Set logging for worker in test to see startup messages
+        process.env.WORKER_LOGGER = 'verbose';
+
         workerProcess = spawn('npm', ['run', 'start:prod:worker'], {
             cwd: projectRoot,
-            detached: true,
-            stdio: 'inherit',
+            stdio: 'pipe',
             env: { ...process.env },
+            detached: false
+        });
+
+        let startupLogs = '';
+
+        workerProcess.stdout?.on('data', (data) => {
+            startupLogs += data.toString();
+        });
+
+        workerProcess.stderr?.on('data', (data) => {
+            startupLogs += data.toString();
         });
 
         workerProcess.on('error', (err) => {
             console.error('Failed to start worker process:', err);
+            throw err;
         });
 
-        // Unref the child process so the parent can exit independently
-        workerProcess.unref();
+        const waitForWorkerInit = async (timeoutMs = 30000) => {
+            const startTime = Date.now();
+            while (Date.now() - startTime < timeoutMs) {
+                if (startupLogs.includes('NestFactory') &&
+                    startupLogs.includes('NestMicroservice') &&
+                    startupLogs.includes('RabbitMQ')) {
+                    return true;
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+            console.error('Worker initialization timed out. Startup logs:\n', startupLogs);
+            throw new Error('Worker failed to initialize within timeout');
+        };
 
-        console.log(`Worker process spawned with PID: ${workerProcess.pid}. Waiting for initialization...`);
-        // Consider a more robust check than fixed delay if possible
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        console.log('Assuming worker is initialized.');
-        // --- End Worker App Start ---
+        try {
+            await waitForWorkerInit();
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            console.log('Worker started successfully');
+        } catch (error) {
+            console.error('Worker initialization failed:', error);
+            if (workerProcess && !workerProcess.killed) {
+                workerProcess.kill();
+            }
+            throw error;
+        }
 
-        // Store references globally
+        process.on('exit', () => {
+            if (workerProcess) {
+                workerProcess.kill('SIGKILL');
+            }
+        });
+
+        process.on('SIGTERM', () => {
+            if (workerProcess) {
+                workerProcess.kill('SIGKILL');
+            }
+        });
+
+        process.on('SIGINT', () => {
+            if (workerProcess) {
+                workerProcess.kill('SIGKILL');
+            }
+        });
+
+        global.__WORKER_PROCESS__ = workerProcess;
         global.__TESTCONTAINERS__ = {
             mongo: mongoContainer,
             rabbit: rabbitContainer,
             redis: redisContainer,
             minio: minioContainer,
         };
-        global.__WORKER_PROCESS__ = workerProcess;
 
         console.log('Global setup complete.');
 
@@ -179,7 +217,6 @@ const setup = async () => {
             rabbitContainer?.stop(),
             redisContainer?.stop(),
             minioContainer?.stop(),
-            // Try to kill worker process using its PID
             workerProcess?.pid ? Promise.resolve(process.kill(-workerProcess.pid, 'SIGKILL')) : Promise.resolve(), // Kill process group
         ]);
         console.log("Cleanup attempted.");

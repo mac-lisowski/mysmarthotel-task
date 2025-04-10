@@ -7,13 +7,14 @@ import { ApiModule } from '../src/api.module';
 import { v4 as uuidv4 } from 'uuid';
 import { Connection, Model } from 'mongoose';
 import { getConnectionToken, getModelToken } from '@nestjs/mongoose';
-import { Task, TaskDocument, TaskStatus } from '@database';
+import { Task, TaskDocument, TaskStatus, Event, EventDocument, EventStatus } from '@database';
 import { useContainer } from 'class-validator';
 
 describe('TaskController (e2e)', () => {
     let app: INestApplication;
     let mongooseConnection: Connection;
     let taskModel: Model<TaskDocument>;
+    let eventModel: Model<EventDocument>;
     let apiKey: string;
 
     beforeAll(async () => {
@@ -29,6 +30,7 @@ describe('TaskController (e2e)', () => {
         app = moduleFixture.createNestApplication();
         mongooseConnection = moduleFixture.get<Connection>(getConnectionToken());
         taskModel = moduleFixture.get<Model<TaskDocument>>(getModelToken(Task.name));
+        eventModel = moduleFixture.get<Model<EventDocument>>(getModelToken(Event.name));
 
         app.setGlobalPrefix('v1');
 
@@ -48,10 +50,20 @@ describe('TaskController (e2e)', () => {
     afterAll(async () => {
         if (mongooseConnection) {
             await taskModel.deleteMany({}).exec();
+            await eventModel.deleteMany({}).exec();
             await mongooseConnection.close();
         }
         if (app) {
             await app.close();
+        }
+
+        // Simple worker cleanup - don't fail the test on cleanup issues
+        if (global.__WORKER_PROCESS__) {
+            try {
+                global.__WORKER_PROCESS__.kill('SIGTERM');
+            } catch (err) {
+                console.warn('Error during worker cleanup:', err);
+            }
         }
     });
 
@@ -66,6 +78,30 @@ describe('TaskController (e2e)', () => {
             completedAt: (status === TaskStatus.COMPLETED || status === TaskStatus.FAILED) ? new Date() : undefined,
         });
         return task;
+    }
+
+    async function waitForEventStatus(
+        taskId: string,
+        expectedStatus: EventStatus,
+        timeoutMs: number = 15000,
+        pollIntervalMs: number = 500
+    ): Promise<boolean> {
+        const startTime = Date.now();
+        while (Date.now() - startTime < timeoutMs) {
+            const event = await eventModel.findOne({
+                'event.payload.taskId': taskId,
+                'eventName': 'task.created.event'
+            }).lean().exec();
+            if (event?.status === expectedStatus) {
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        }
+
+        console.warn(`Timeout waiting for event for task ${taskId} to reach status ${expectedStatus}`);
+        const allEvents = await eventModel.find({}).lean().exec();
+        console.warn('Current events in database:', JSON.stringify(allEvents, null, 2));
+        return false;
     }
 
     describe('/v1/task/upload (POST)', () => {
@@ -199,6 +235,41 @@ describe('TaskController (e2e)', () => {
                         expect.stringContaining('uploadId')
                     ]));
                 });
+        });
+
+        it('should trigger worker event publishing', async () => {
+            const filePath = path.join(__dirname, 'fixtures', 'reservations.xlsx');
+            const originalFileName = 'reservations_worker_test.xlsx';
+            const fileSize = fs.statSync(filePath).size;
+            const chunkSize = 1 * 1024 * 1024;
+            const totalChunks = Math.ceil(fileSize / chunkSize);
+            const fileStream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
+            const uploadId = uuidv4();
+            let chunkNumber = 0;
+            let receivedTaskId: string | null = null;
+
+            for await (const chunk of fileStream) {
+                const isLastChunk = chunkNumber === totalChunks - 1;
+                const response = await request(app.getHttpServer())
+                    .post('/v1/task/upload')
+                    .set('x-api-key', apiKey)
+                    .attach('file', chunk, { filename: `chunk-${chunkNumber}.bin`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+                    .field('uploadId', uploadId)
+                    .field('originalFileName', originalFileName)
+                    .field('chunkNumber', chunkNumber)
+                    .field('totalChunks', totalChunks);
+                if (isLastChunk) {
+                    receivedTaskId = response.body.taskId;
+                }
+                chunkNumber++;
+            }
+            console.log(`Upload complete. Task ID: ${receivedTaskId}. Waiting for event publication...`);
+            expect(receivedTaskId).toBeDefined();
+            expect(receivedTaskId).not.toBeNull();
+
+            const published = await waitForEventStatus(receivedTaskId!, EventStatus.PUBLISHED);
+
+            expect(published).toBe(true);
         });
     });
 

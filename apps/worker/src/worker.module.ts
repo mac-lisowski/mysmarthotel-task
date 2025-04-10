@@ -64,7 +64,7 @@ import { TasksModule } from './modules/tasks/tasks.module';
           {
             name: 'q.worker.task',
             exchange: Exchange.WORKER,
-            routingKey: ['task.event', 'dlq-publish'],
+            routingKey: ['task.created.event', 'dlq-publish',],
             options: {
               durable: true,
               deadLetterExchange: Exchange.DLQ,
