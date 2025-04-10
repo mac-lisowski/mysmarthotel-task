@@ -144,10 +144,12 @@ const setup = async () => {
 
         workerProcess.stdout?.on('data', (data) => {
             startupLogs += data.toString();
+            console.log(data.toString());
         });
 
         workerProcess.stderr?.on('data', (data) => {
             startupLogs += data.toString();
+            console.error(data.toString());
         });
 
         workerProcess.on('error', (err) => {

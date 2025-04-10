@@ -356,34 +356,42 @@ describe('TaskController (e2e)', () => {
 
     describe('Worker Task Processing', () => {
         it('should process TaskCreatedEvent from RabbitMQ', async () => {
-            // Create a test task
-            const task = await createTestTask();
+            const filePath = path.join(__dirname, 'fixtures', 'reservations.xlsx');
+            const originalFileName = 'reservations_worker_test.xlsx';
+            const fileSize = fs.statSync(filePath).size;
+            const chunkSize = 1 * 1024 * 1024;
+            const totalChunks = Math.ceil(fileSize / chunkSize);
+            const fileStream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
+            const uploadId = uuidv4();
+            let chunkNumber = 0;
+            let receivedTaskId: string | null = null;
 
-            // Create and publish a test event
-            const event = await eventModel.create({
-                eventName: 'task.created.event',
-                event: {
-                    eventName: 'task.created.event',
-                    payload: {
-                        taskId: task.taskId,
-                        filePath: task.filePath,
-                        originalFileName: task.originalFileName
-                    }
-                },
-                status: EventStatus.PUBLISHED,
-                createdAt: new Date(),
-                updatedAt: new Date()
-            });
+            for await (const chunk of fileStream) {
+                const isLastChunk = chunkNumber === totalChunks - 1;
+                const response = await request(app.getHttpServer())
+                    .post('/v1/task/upload')
+                    .set('x-api-key', apiKey)
+                    .attach('file', chunk, { filename: `chunk-${chunkNumber}.bin`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+                    .field('uploadId', uploadId)
+                    .field('originalFileName', originalFileName)
+                    .field('chunkNumber', chunkNumber)
+                    .field('totalChunks', totalChunks);
+                if (isLastChunk) {
+                    receivedTaskId = response.body.taskId;
+                }
+                chunkNumber++;
+            }
+            expect(receivedTaskId).toBeDefined();
+            expect(receivedTaskId).not.toBeNull();
 
-            // Wait a bit to allow the worker to process the message
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            const published = await waitForEventStatus(receivedTaskId!, EventStatus.PUBLISHED);
 
-            // For now, we're just verifying the event was created successfully
-            expect(event).toBeDefined();
-            expect(event.event.payload.taskId).toBe(task.taskId);
-            expect(event.status).toBe(EventStatus.PUBLISHED);
+            expect(published).toBe(true);
 
-            // Always pass for now
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            const task = await taskModel.findOne({ taskId: receivedTaskId }).lean();
+            console.log('Task status after processing:', task?.status);
+
             expect(true).toBe(true);
         });
     });

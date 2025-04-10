@@ -17,6 +17,14 @@ export class TasksService {
         }
     })
     async handleTaskCreated(msg: TaskCreatedEvent & { eventId: string }): Promise<Nack | void> {
+        const { eventId, payload } = msg;
+        this.logger.debug(`[${eventId}] User registered event received.`);
+
+        if (!eventId || !payload) {
+            this.logger.error('Message is missing eventId or payload. Acknowledging to prevent loop.', JSON.stringify(msg));
+            return;
+        }
+
         this.logger.log('OK - Received TaskCreatedEvent');
         this.logger.debug('Event payload:', msg);
 
