@@ -57,7 +57,6 @@ describe('TaskController (e2e)', () => {
             await app.close();
         }
 
-        // Simple worker cleanup - don't fail the test on cleanup issues
         if (global.__WORKER_PROCESS__) {
             try {
                 global.__WORKER_PROCESS__.kill('SIGTERM');
@@ -90,10 +89,17 @@ describe('TaskController (e2e)', () => {
         while (Date.now() - startTime < timeoutMs) {
             const event = await eventModel.findOne({
                 'event.payload.taskId': taskId,
-                'eventName': 'task.created.event'
+                'eventName': 'task.created.event',
+                status: { $in: [expectedStatus, EventStatus.PROCESSED] }
             }).lean().exec();
-            if (event?.status === expectedStatus) {
-                return true;
+
+            if (event) {
+                if (expectedStatus === EventStatus.PUBLISHED && event.status === EventStatus.PROCESSED) {
+                    return true;
+                }
+                if (event.status === expectedStatus) {
+                    return true;
+                }
             }
             await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
         }
@@ -104,12 +110,33 @@ describe('TaskController (e2e)', () => {
         return false;
     }
 
+    async function waitForTaskStatus(
+        taskId: string,
+        expectedStatus: TaskStatus,
+        timeoutMs: number = 15000,
+        pollIntervalMs: number = 500
+    ): Promise<boolean> {
+        const startTime = Date.now();
+        while (Date.now() - startTime < timeoutMs) {
+            const task = await taskModel.findOne({ taskId }).lean().exec();
+            if (task?.status === expectedStatus) {
+                return true;
+            }
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        }
+
+        console.warn(`Timeout waiting for task ${taskId} to reach status ${expectedStatus}`);
+        const task = await taskModel.findOne({ taskId }).lean().exec();
+        console.warn('Current task state:', JSON.stringify(task, null, 2));
+        return false;
+    }
+
     describe('/v1/task/upload (POST)', () => {
         it('should upload file in chunks and create task entry', async () => {
             const filePath = path.join(__dirname, 'fixtures', 'reservations.xlsx');
             const originalFileName = 'reservations.xlsx';
             const fileSize = fs.statSync(filePath).size;
-            const chunkSize = 1 * 1024 * 1024; // 1MB chunks
+            const chunkSize = 1 * 1024 * 1024;
             const totalChunks = Math.ceil(fileSize / chunkSize);
             const fileStream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
             const uploadId = uuidv4();
@@ -212,7 +239,7 @@ describe('TaskController (e2e)', () => {
                 })
                 .field('uploadId', uuidv4())
                 .field('originalFileName', 'test.xlsx')
-                .field('chunkNumber', 5) // Out of bounds chunk number
+                .field('chunkNumber', 5)
                 .field('totalChunks', 3)
                 .expect(400);
         });
@@ -263,13 +290,12 @@ describe('TaskController (e2e)', () => {
                 }
                 chunkNumber++;
             }
-            console.log(`Upload complete. Task ID: ${receivedTaskId}. Waiting for event publication...`);
+            console.log(`Upload complete. Task ID: ${receivedTaskId}. Waiting for event processing...`);
             expect(receivedTaskId).toBeDefined();
             expect(receivedTaskId).not.toBeNull();
 
-            const published = await waitForEventStatus(receivedTaskId!, EventStatus.PUBLISHED);
-
-            expect(published).toBe(true);
+            const processed = await waitForEventStatus(receivedTaskId!, EventStatus.PROCESSED);
+            expect(processed).toBe(true);
         });
     });
 
@@ -384,15 +410,26 @@ describe('TaskController (e2e)', () => {
             expect(receivedTaskId).toBeDefined();
             expect(receivedTaskId).not.toBeNull();
 
-            const published = await waitForEventStatus(receivedTaskId!, EventStatus.PUBLISHED);
+            const eventProcessed = await waitForEventStatus(receivedTaskId!, EventStatus.PROCESSED);
+            expect(eventProcessed).toBe(true);
 
-            expect(published).toBe(true);
+            const taskCompleted = await waitForTaskStatus(receivedTaskId!, TaskStatus.FAILED);
+            expect(taskCompleted).toBe(true);
 
-            await new Promise(resolve => setTimeout(resolve, 5000));
             const task = await taskModel.findOne({ taskId: receivedTaskId }).lean();
             console.log('Task status after processing:', task?.status);
 
-            expect(true).toBe(true);
+            expect(task).toBeDefined();
+            expect(task?.status).toBe(TaskStatus.FAILED);
+            expect(task?.errors).toBeDefined();
+            expect(task?.errors.length).toBeGreaterThan(0);
+            expect(task?.completedAt).toBeDefined();
+
+            const event = await eventModel.findOne({ 'event.payload.taskId': receivedTaskId }).lean();
+            expect(event?.status).toBe(EventStatus.PROCESSED);
+            expect(event?.processedAt).toBeDefined();
+            expect(event?.error).toBeDefined();
+            expect(event?.error.message).toContain('Processing completed with');
         });
     });
 }); 
