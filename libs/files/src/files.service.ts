@@ -10,9 +10,24 @@ import {
     UploadPartCommand,
     CompleteMultipartUploadCommand,
     CompletedPart,
-    AbortMultipartUploadCommand
+    AbortMultipartUploadCommand,
+    GetObjectCommand,
+    GetObjectCommandOutput,
+    S3ServiceException
 } from "@aws-sdk/client-s3";
 import { Readable } from "stream";
+
+interface RetryConfig {
+    maxRetries: number;
+    baseDelay: number;
+    maxDelay: number;
+}
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+    maxRetries: 3,
+    baseDelay: 1000, // 1 second
+    maxDelay: 5000   // 5 seconds
+};
 
 @Injectable()
 export class FileService {
@@ -28,9 +43,83 @@ export class FileService {
                 accessKeyId: this.configService.getOrThrow('s3.accessKeyId'),
                 secretAccessKey: this.configService.getOrThrow('s3.secretAccessKey'),
             },
-            forcePathStyle: true, // Often needed for MinIO/LocalStack
+            forcePathStyle: true,
         });
         this.bucketName = this.configService.getOrThrow('s3.bucketName');
+    }
+
+    /**
+     * Determines if an S3 error is retryable.
+     * @param error - The error to check
+     * @returns boolean indicating if the error is retryable
+     */
+    private isRetryableError(error: any): boolean {
+        if (!(error instanceof S3ServiceException)) {
+            return false;
+        }
+
+        const retryableErrors = [
+            'RequestTimeout',
+            'RequestTimeoutException',
+            'PriorRequestNotComplete',
+            'ConnectionError',
+            'NetworkingError',
+            'ThrottlingException',
+            'TooManyRequestsException',
+            'InternalError',
+            'ServiceUnavailable',
+            'SlowDown',
+        ];
+
+        return retryableErrors.includes(error.name) ||
+            (error.$metadata?.httpStatusCode ?? 0) >= 500;
+    }
+
+    /**
+     * Implements exponential backoff for retries.
+     * @param retryCount - Current retry attempt number
+     * @param config - Retry configuration
+     * @returns Delay in milliseconds
+     */
+    private getBackoffDelay(retryCount: number, config: RetryConfig = DEFAULT_RETRY_CONFIG): number {
+        const delay = Math.min(
+            config.maxDelay,
+            config.baseDelay * Math.pow(2, retryCount)
+        );
+        return delay * (0.75 + Math.random() * 0.5);
+    }
+
+    /**
+     * Executes an S3 operation with retries.
+     * @param operation - The S3 operation to execute
+     * @param config - Retry configuration
+     * @returns The result of the operation
+     * @throws The last error encountered if all retries fail
+     */
+    private async executeWithRetry<T>(
+        operation: () => Promise<T>,
+        config: RetryConfig = DEFAULT_RETRY_CONFIG
+    ): Promise<T> {
+        let lastError: Error | null = null;
+
+        for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
+            try {
+                return await operation();
+            } catch (error) {
+                lastError = error;
+
+                if (!this.isRetryableError(error) || attempt === config.maxRetries) {
+                    throw error;
+                }
+
+                const delay = this.getBackoffDelay(attempt, config);
+                this.logger.debug(`Retrying operation after ${delay}ms (attempt ${attempt + 1}/${config.maxRetries})`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+
+        // This should never happen due to the throw in the loop, but TypeScript needs it
+        throw lastError;
     }
 
     /**
@@ -46,7 +135,7 @@ export class FileService {
         });
 
         try {
-            const response = await this.s3Client.send(command);
+            const response = await this.executeWithRetry(() => this.s3Client.send(command));
 
             if (response.$metadata.httpStatusCode === HttpStatus.NO_CONTENT) {
                 this.logger.debug(`Successfully deleted file ${bucketFilePath}`);
@@ -81,7 +170,7 @@ export class FileService {
         });
 
         try {
-            const response = await this.s3Client.send(command);
+            const response = await this.executeWithRetry(() => this.s3Client.send(command));
 
             if (response.$metadata.httpStatusCode === HttpStatus.OK) {
                 return bucketFilePath;
@@ -109,7 +198,7 @@ export class FileService {
         });
 
         try {
-            const response = await this.s3Client.send(command);
+            const response = await this.executeWithRetry(() => this.s3Client.send(command));
             if (!response.UploadId) {
                 throw new Error('S3 did not return an UploadId');
             }
@@ -140,7 +229,7 @@ export class FileService {
         });
 
         try {
-            const response = await this.s3Client.send(command);
+            const response = await this.executeWithRetry(() => this.s3Client.send(command));
             if (!response.ETag) {
                 throw new Error('S3 did not return an ETag for the uploaded part');
             }
@@ -161,7 +250,6 @@ export class FileService {
      * @throws Error if completion fails.
      */
     async completeMultipartUpload(bucketFilePath: string, s3UploadId: string, parts: CompletedPart[]): Promise<string | undefined> {
-        // Ensure parts are sorted by PartNumber as required by S3
         const sortedParts = [...parts].sort((a, b) => (a.PartNumber ?? 0) - (b.PartNumber ?? 0));
 
         const command = new CompleteMultipartUploadCommand({
@@ -174,13 +262,11 @@ export class FileService {
         });
 
         try {
-            const response = await this.s3Client.send(command);
+            const response = await this.executeWithRetry(() => this.s3Client.send(command));
             this.logger.debug(`Completed multipart upload for ${bucketFilePath} (UploadId: ${s3UploadId})`);
-            // Location might be useful, ETag confirms integrity
             return response.ETag ?? response.Location;
         } catch (err) {
             this.logger.error(`Failed to complete multipart upload for ${bucketFilePath} (UploadId: ${s3UploadId})`, err);
-            // Consider aborting upload here if completion fails critically?
             throw new Error(`Unable to complete multipart upload: ${err.message}`);
         }
     }
@@ -199,7 +285,7 @@ export class FileService {
         });
 
         try {
-            await this.s3Client.send(command);
+            await this.executeWithRetry(() => this.s3Client.send(command));
             this.logger.debug(`Aborted multipart upload for ${bucketFilePath} (UploadId: ${s3UploadId})`);
         } catch (err) {
             this.logger.error(`Failed to abort multipart upload for ${bucketFilePath} (UploadId: ${s3UploadId})`, err);
@@ -236,15 +322,101 @@ export class FileService {
         });
 
         try {
-            const response = await this.s3Client.send(command);
+            const response = await this.executeWithRetry(() => this.s3Client.send(command));
             return response.$metadata.httpStatusCode === HttpStatus.OK;
         } catch (err: any) {
-            // AWS SDK throws NoSuchKey error when file doesn't exist
             if (err.name === 'NotFound') {
                 return false;
             }
             this.logger.error(`Failed to check file existence ${bucketFilePath}`, err);
             throw new Error(`Unable to check file existence in S3: ${err.message}`);
         }
+    }
+
+    /**
+     * Downloads a file from S3 and returns it as a readable stream.
+     * @param bucketFilePath - The path to the file in the bucket.
+     * @returns A readable stream of the file content and metadata.
+     * @throws Error if download fails or file doesn't exist.
+     */
+    async downloadFile(bucketFilePath: string): Promise<{ stream: Readable; metadata: GetObjectCommandOutput }> {
+        const command = new GetObjectCommand({
+            Bucket: this.bucketName,
+            Key: bucketFilePath,
+        });
+
+        try {
+            const response = await this.executeWithRetry(() => this.s3Client.send(command));
+
+            if (!response.Body) {
+                throw new Error('S3 returned empty response body');
+            }
+
+            if (!(response.Body instanceof Readable)) {
+                throw new Error('S3 response body is not a readable stream');
+            }
+
+            this.logger.debug(`Successfully initiated download for file ${bucketFilePath}`);
+
+            return {
+                stream: response.Body as Readable,
+                metadata: response
+            };
+        } catch (err) {
+            this.logger.error(`Failed to download file ${bucketFilePath}`, err);
+            if (err.name === 'NoSuchKey') {
+                throw new Error(`File ${bucketFilePath} not found in S3`);
+            }
+            throw new Error(`Unable to download file from S3: ${err.message}`);
+        }
+    }
+
+    /**
+     * Process a file in chunks using a stream.
+     * @param stream - The readable stream to process
+     * @param chunkSize - Size of each chunk in bytes (default: 64KB)
+     * @param processor - Async function to process each chunk
+     * @returns Promise that resolves when processing is complete
+     */
+    async processFileInChunks(
+        stream: Readable,
+        processor: (chunk: Buffer) => Promise<void>,
+        chunkSize: number = 64 * 1024 // 64KB default chunk size
+    ): Promise<void> {
+        return new Promise((resolve, reject) => {
+            let buffer = Buffer.alloc(0);
+
+            stream.on('data', async (chunk: Buffer) => {
+                try {
+                    buffer = Buffer.concat([buffer, chunk]);
+
+                    while (buffer.length >= chunkSize) {
+                        const chunkToProcess = buffer.slice(0, chunkSize);
+                        buffer = buffer.slice(chunkSize);
+
+                        stream.pause();
+                        await processor(chunkToProcess);
+                        stream.resume();
+                    }
+                } catch (error) {
+                    reject(error);
+                }
+            });
+
+            stream.on('end', async () => {
+                try {
+                    if (buffer.length > 0) {
+                        await processor(buffer);
+                    }
+                    resolve();
+                } catch (error) {
+                    reject(error);
+                }
+            });
+
+            stream.on('error', (error) => {
+                reject(error);
+            });
+        });
     }
 }
