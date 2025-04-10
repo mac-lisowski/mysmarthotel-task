@@ -3,7 +3,7 @@ import { IQueryHandler, QueryHandler } from '@nestjs/cqrs';
 import { Model } from 'mongoose';
 import { NotFoundException } from '@nestjs/common';
 import { Task, TaskDocument, TaskStatus } from '@database';
-import { GetFailedTaskErrorReportQuery, GetFailedTaskErrorReportResult } from '../get-failed-task-error-report.query';
+import { GetFailedTaskErrorReportQuery, GetFailedTaskErrorReportResult } from './get-failed-task-error-report.query';
 
 @QueryHandler(GetFailedTaskErrorReportQuery)
 export class GetFailedTaskErrorReportHandler implements IQueryHandler<GetFailedTaskErrorReportQuery, GetFailedTaskErrorReportResult> {

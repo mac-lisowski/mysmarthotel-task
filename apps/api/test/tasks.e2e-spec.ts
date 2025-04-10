@@ -435,14 +435,13 @@ describe('TaskController (e2e)', () => {
             const filePath = path.join(__dirname, 'fixtures', 'reservations-good.xlsx');
             const originalFileName = 'reservations_good_worker_test.xlsx';
             const fileSize = fs.statSync(filePath).size;
-            const chunkSize = 1 * 1024 * 1024; // 1MB chunk size
+            const chunkSize = 1 * 1024 * 1024;
             const totalChunks = Math.ceil(fileSize / chunkSize);
             const fileStream = fs.createReadStream(filePath, { highWaterMark: chunkSize });
             const uploadId = uuidv4();
             let chunkNumber = 0;
             let receivedTaskId: string | null = null;
 
-            // Simulate chunked upload
             for await (const chunk of fileStream) {
                 const isLastChunk = chunkNumber === totalChunks - 1;
                 const response = await request(app.getHttpServer())
@@ -461,29 +460,108 @@ describe('TaskController (e2e)', () => {
             expect(receivedTaskId).toBeDefined();
             expect(receivedTaskId).not.toBeNull();
 
-            // Wait for the event to be marked as processed
-            const eventProcessed = await waitForEventStatus(receivedTaskId!, EventStatus.PROCESSED, 30000); // Increased timeout for potentially larger file
+            const eventProcessed = await waitForEventStatus(receivedTaskId!, EventStatus.PROCESSED, 30000);
             expect(eventProcessed).toBe(true);
 
-            // Wait for the task to be marked as COMPLETED
-            const taskCompleted = await waitForTaskStatus(receivedTaskId!, TaskStatus.COMPLETED, 30000); // Increased timeout
+            const taskCompleted = await waitForTaskStatus(receivedTaskId!, TaskStatus.COMPLETED, 30000);
             expect(taskCompleted).toBe(true);
 
-            // Verify final task state
             const task = await taskModel.findOne({ taskId: receivedTaskId }).lean();
             console.log('Task status after processing (good file):', task?.status);
 
             expect(task).toBeDefined();
             expect(task?.status).toBe(TaskStatus.COMPLETED);
             expect(task?.errors).toBeDefined();
-            expect(task?.errors).toHaveLength(0); // Expect no errors
+            expect(task?.errors).toHaveLength(0);
             expect(task?.completedAt).toBeDefined();
 
-            // Verify final event state
             const event = await eventModel.findOne({ 'event.payload.taskId': receivedTaskId }).lean();
             expect(event?.status).toBe(EventStatus.PROCESSED);
             expect(event?.processedAt).toBeDefined();
             expect(event?.error).toBeUndefined();
+        });
+    });
+
+    describe('/v1/task/report/:taskId (GET)', () => {
+        let failedTaskId: string;
+        let failedTaskOriginalName: string;
+        let completedTaskId: string;
+
+        beforeAll(async () => {
+            const filePathErrors = path.join(__dirname, 'fixtures', 'reservations.xlsx');
+            failedTaskOriginalName = 'reservations_report_test.xlsx';
+            const fileSizeErrors = fs.statSync(filePathErrors).size;
+            const chunkSizeErrors = 1 * 1024 * 1024;
+            const totalChunksErrors = Math.ceil(fileSizeErrors / chunkSizeErrors);
+            const fileStreamErrors = fs.createReadStream(filePathErrors, { highWaterMark: chunkSizeErrors });
+            const uploadIdErrors = uuidv4();
+            let chunkNumberErrors = 0;
+
+            for await (const chunk of fileStreamErrors) {
+                const isLastChunk = chunkNumberErrors === totalChunksErrors - 1;
+                const response = await request(app.getHttpServer())
+                    .post('/v1/task/upload')
+                    .set('x-api-key', apiKey)
+                    .attach('file', chunk, { filename: `chunk-${chunkNumberErrors}.bin`, contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+                    .field('uploadId', uploadIdErrors)
+                    .field('originalFileName', failedTaskOriginalName)
+                    .field('chunkNumber', chunkNumberErrors)
+                    .field('totalChunks', totalChunksErrors);
+                if (isLastChunk) {
+                    failedTaskId = response.body.taskId;
+                }
+                chunkNumberErrors++;
+            }
+            expect(failedTaskId).toBeDefined();
+
+            const eventProcessed = await waitForEventStatus(failedTaskId!, EventStatus.PROCESSED, 30000);
+            expect(eventProcessed).toBe(true);
+            const taskFailed = await waitForTaskStatus(failedTaskId!, TaskStatus.FAILED, 30000);
+            expect(taskFailed).toBe(true);
+
+            const completedTask = await createTestTask(TaskStatus.COMPLETED);
+            completedTaskId = completedTask.taskId;
+        });
+
+        it('should return 401 for invalid API key', async () => {
+            await request(app.getHttpServer())
+                .get(`/v1/task/report/${failedTaskId}`)
+                .set('x-api-key', 'invalid-key')
+                .expect(401);
+        });
+
+        it('should return 404 for non-existent taskId', async () => {
+            const nonExistentTaskId = uuidv4();
+            await request(app.getHttpServer())
+                .get(`/v1/task/report/${nonExistentTaskId}`)
+                .set('x-api-key', apiKey)
+                .expect(404);
+        });
+
+        it('should return 404 for a task that is not FAILED', async () => {
+            await request(app.getHttpServer())
+                .get(`/v1/task/report/${completedTaskId}`)
+                .set('x-api-key', apiKey)
+                .expect(404)
+                .expect(res => {
+                    expect(res.body.message).toContain(`status FAILED`);
+                    expect(res.body.message).toContain(TaskStatus.COMPLETED);
+                });
+        });
+
+        it('should return CSV report for a FAILED task', async () => {
+            const response = await request(app.getHttpServer())
+                .get(`/v1/task/report/${failedTaskId}`)
+                .set('x-api-key', apiKey)
+                .expect(200);
+
+            expect(response.headers['content-type']).toEqual('text/csv');
+            expect(response.headers['content-disposition']).toContain(`attachment; filename="error_report_${failedTaskOriginalName}.csv"`);
+
+            expect(response.text).toBeDefined();
+            expect(response.text.length).toBeGreaterThan(0);
+            expect(response.text).toContain('"Row","Error"\n');
+            expect(response.text).toContain('Missing required field');
         });
     });
 }); 
