@@ -82,7 +82,7 @@ export class EventsService {
                     await session.withTransaction(async (currentSession) => {
                         const messagePayload = {
                             eventId: eventIdString,
-                            ...(event as any).payload,
+                            ...event.event,
                         };
 
                         await this.amqpConnection.publish(
