@@ -269,13 +269,7 @@ E2E tests (`*.e2e-spec.ts`) typically live within the respective application's `
 npm run test:e2e:api
 ```
 (Uses configuration from `apps/api/test/jest-e2e.json`)
-
-**Run Worker E2E Tests:**
-
-```bash
-npm run test:e2e:worker
-```
-(Uses configuration from `apps/worker/test/jest-e2e.json`)
+*These tests cover the full flow from API request through event publishing to worker processing and final task status updates.*
 
 ## Environment Variables
 

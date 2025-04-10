@@ -50,10 +50,7 @@ npm run start:dev:worker
   ```bash
   npm run test:e2e:api
   ```
-- **E2E Tests (Worker):** (Requires Docker services running)
-  ```bash
-  npm run test:e2e:worker
-  ```
+  *This tests the API endpoints and their interaction with the worker via RabbitMQ.*
 
 ---
 
