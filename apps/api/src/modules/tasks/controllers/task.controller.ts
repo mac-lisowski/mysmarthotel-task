@@ -1,4 +1,4 @@
-import { Body, Controller, FileTypeValidator, Get, Logger, Param, ParseFilePipe, Post, UploadedFile, UseInterceptors, UseGuards, NotFoundException } from "@nestjs/common";
+import { Body, Controller, FileTypeValidator, Get, Logger, Param, ParseFilePipe, Post, UploadedFile, UseInterceptors, UseGuards, NotFoundException, Res, StreamableFile } from "@nestjs/common";
 import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiResponse, ApiTags, ApiSecurity } from "@nestjs/swagger";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { QueryBus } from "@nestjs/cqrs";
@@ -9,6 +9,8 @@ import { TaskService } from "../services/task.service";
 import { ApiKeyGuard } from "../../../common/guards/api-key.guard";
 import { GetTaskStatusQuery } from "../queries/get-task-status.query";
 import { TaskStatusResponseDto } from "../dto/task-status-response.dto";
+import { GetFailedTaskErrorReportQuery, GetFailedTaskErrorReportResult } from "../queries/get-failed-task-error-report.query";
+import { Response } from 'express';
 
 @ApiTags('Task')
 @ApiSecurity('api_key')
@@ -91,6 +93,49 @@ export class TaskController {
             if (error instanceof NotFoundException) {
                 throw new NotFoundException(error.message);
             }
+            throw error;
+        }
+    }
+
+    @ApiOperation({ summary: 'Download Task Error Report (CSV)', description: 'Generates and downloads a CSV report detailing errors for a specific FAILED task.' })
+    @ApiParam({ name: 'taskId', description: 'The unique ID of the failed task', type: String })
+    @ApiResponse({ status: 200, description: 'CSV error report generated successfully', content: { 'text/csv': {} } })
+    @ApiResponse({ status: 401, description: 'Unauthorized - API key required' })
+    @ApiResponse({ status: 404, description: 'Task not found or task status is not FAILED' })
+    @ApiResponse({ status: 500, description: 'Internal server error during report generation' })
+    @Get('report/:taskId')
+    async getTaskErrorReport(
+        @Param('taskId') taskId: string,
+        @Res({ passthrough: true }) res: Response,
+    ): Promise<StreamableFile> {
+        try {
+            const { errors, originalFileName }: GetFailedTaskErrorReportResult = await this.queryBus.execute(
+                new GetFailedTaskErrorReportQuery(taskId)
+            );
+
+            const csvHeader = '"Row","Error"\n';
+            const csvRows = errors.map(err => {
+                const row = err.row !== undefined ? `"${err.row}"` : '"N/A"';
+                const errorMsg = err.error ? `"${String(err.error).replace(/"/g, '""')}"` : '""';
+                return `${row},${errorMsg}`;
+            }).join('\n');
+
+            const csvContent = csvHeader + csvRows;
+            const fileBuffer = Buffer.from(csvContent, 'utf-8');
+
+            const safeOriginalFileName = originalFileName.replace(/[^a-z0-9._-]/gi, '_');
+            const reportFilename = `error_report_${safeOriginalFileName}.csv`;
+
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="${reportFilename}"`);
+
+            return new StreamableFile(fileBuffer);
+        }
+        catch (error) {
+            if (error instanceof NotFoundException) {
+                throw new NotFoundException(error.message);
+            }
+            this.logger.error(`Failed to generate error report for task ${taskId}: ${error.message}`, error.stack);
             throw error;
         }
     }
