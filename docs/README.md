@@ -189,6 +189,31 @@ npm run start:prod:worker
 
 Note: For actual production deployments, consider containerizing the applications using Dockerfiles (like the example `Dockerfile-api`) and managing them with an orchestrator or platform.
 
+### Worker Task Processing
+
+The `apps/worker` application is responsible for handling background tasks triggered by events from the API. Currently, its primary function is processing reservation data uploaded via XLSX files.
+
+**Workflow:**
+
+1.  **Consume Event:** The worker listens to the `q.worker.task` queue on RabbitMQ for `task.created.event` messages.
+2.  **Claim Task:** It attempts to claim the task by setting its status to `IN_PROGRESS` atomically.
+3.  **Download File:** It retrieves the associated XLSX file path from the task payload and downloads the file from the configured S3 storage (using LocalStack for local development).
+4.  **Parse XLSX:** The file is parsed using the `xlsx` library. It expects columns like `reservation_id`, `guest_name`, `check_in_date`, `check_out_date`, and `status`.
+5.  **Process Reservations:** Each row in the file is processed according to the following rules:
+    *   **Validation:** Basic validation checks for required fields, valid dates (check-out after check-in), and valid `ReservationStatus` enum values. Duplicate `reservation_id`s within the file are flagged as errors.
+    *   **Database Interaction:**
+        *   If a reservation from the file has a status of `COMPLETED` or `CANCELED`:
+            *   If the reservation **exists** in the database, its status is updated (if different).
+            *   If the reservation **does not exist**, it is **not** added.
+        *   If a reservation from the file has any other status (e.g., `PENDING`):
+            *   The reservation is added to the database if it's new, or updated if it already exists (upsert operation).
+    *   Row-level errors are recorded but do not stop the processing of subsequent rows.
+6.  **Update Task Status:** After processing all rows:
+    *   If any errors were recorded (including file-level errors like parsing issues or validation errors), the task status is set to `FAILED`, and the errors are stored in the task document.
+    *   If no errors occurred, the task status is set to `COMPLETED`.
+7.  **Update Event Status:** The corresponding `task.created.event` document is marked as `PROCESSED`.
+8.  **Error Handling:** Uses RabbitMQ's DLQ mechanism for retrying transient errors during message handling or transaction execution. Non-retryable errors result in the task being marked `FAILED`.
+
 ### API Authentication
 
 The API uses a simple API key authentication scheme for this project:
